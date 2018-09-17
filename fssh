@@ -14,17 +14,25 @@ def similar(a, b):
 
 search_str = str(sys.argv[1])
 results = {}
+muncher = {}
 
 for r in response['Reservations']:
   for i in r['Instances']:
     if i['State']['Name'] == 'running':
         for tag in i.get('Tags', []):
                 if tag['Key'] == 'Name':
-                        results[i['PrivateIpAddress']] = { "similarity": similar ( search_str,  tag['Value'] ), "name": tag['Value'] }
+                        similarity = similar ( search_str,  tag['Value'])
+                        results[i['PrivateIpAddress']] = { "similarity": similarity, "name": tag['Value'] }
+                        if muncher.get(similarity, None):
+                            muncher[similarity].append({ "ip": i['PrivateIpAddress'], "name": tag['Value'] } )
+                        else:
+                            muncher[similarity] = [{ "ip": i['PrivateIpAddress'], "name": tag['Value'] }]
 
 greatest_similarity = 0
 selected_ip = None
 selected_name = None
+
+
 
 for r in results:
         if results[r]['similarity'] > greatest_similarity:
@@ -32,6 +40,19 @@ for r in results:
                 selected_ip = r
                 selected_name = results[r]['name']
 
-print "Greatest similarity to %s: %s - %s (%f)" % (search_str, selected_name, selected_ip, greatest_similarity)
-if (selected_ip is not None):
+n_alternatives = len(muncher[greatest_similarity])
+if n_alternatives > 1:
+    print "Found %i similar alternatives, which one do you want?" % n_alternatives
+    for idx, alt in enumerate(muncher[greatest_similarity]):
+        print "[%i] %s - %s" % (idx+1, alt['ip'], alt['name'])
+    sel = int(input("Which one? [1 - %i]: " % n_alternatives))
+    if sel > 0 and sel<= n_alternatives:
+        selected_ip = muncher[greatest_similarity][sel-1]['ip']
+        print "You chose %s" % selected_ip
+else:
+    print "Greatest similarity to %s: %s - %s (%f)" % (search_str, selected_name, selected_ip, greatest_similarity)
+
+
+
+if (selected_ip is not None and False):
     call([ "/usr/bin/sudo", "su", "-c", "ssh -o StrictHostKeyChecking=no %s" % selected_ip, "-", "ec2-user" ])
