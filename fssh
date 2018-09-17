@@ -1,0 +1,37 @@
+#!/usr/bin/python
+
+import boto3
+from difflib import SequenceMatcher
+import sys
+from subprocess import call
+
+client = boto3.client('ec2')
+
+response = client.describe_instances()
+
+def similar(a, b):
+    return SequenceMatcher(None, a, b).ratio()
+
+search_str = str(sys.argv[1])
+results = {}
+
+for r in response['Reservations']:
+  for i in r['Instances']:
+    if i['State']['Name'] == 'running':
+        for tag in i.get('Tags', []):
+                if tag['Key'] == 'Name':
+                        results[i['PrivateIpAddress']] = { "similarity": similar ( search_str,  tag['Value'] ), "name": tag['Value'] }
+
+greatest_similarity = 0
+selected_ip = None
+selected_name = None
+
+for r in results:
+        if results[r]['similarity'] > greatest_similarity:
+                greatest_similarity = results[r]['similarity']
+                selected_ip = r
+                selected_name = results[r]['name']
+
+print "Greatest similarity to %s: %s - %s (%f)" % (search_str, selected_name, selected_ip, greatest_similarity)
+if (selected_ip is not None):
+    call([ "/usr/bin/sudo", "su", "-c", "ssh -o StrictHostKeyChecking=no %s" % selected_ip, "-", "ec2-user" ])
